@@ -92,6 +92,5 @@ npm run dev
 
 ## 📝 Submission Details
 
-- **Public Repo**: [GitHub Repository Link]
-- **Live Demo**: [Vercel Deployment URL]
+- **Live**: [[Vercel Deployment URL]](https://smartbookmarkdesk.vercel.app/)
 - **README**: Detailed documentation of features, setup, and engineering challenges.
