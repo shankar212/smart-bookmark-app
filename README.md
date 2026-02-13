@@ -1,12 +1,13 @@
 # 🔖 Smart Bookmark App
 
-A sophisticated, real-time bookmark manager built with **Next.js 14** and **Supabase**. This application allows users to securely manage their bookmarks with instant synchronization across devices.
+A sophisticated, real-time bookmark manager built with **Next.js 14/15**, **Tailwind v4**, and **Supabase**. This application allows users to securely manage their bookmarks with instant synchronization and a premium, theme-aware user interface.
 
 ## 🚀 Tech Stack
 
-- **Framework**: [Next.js 14](https://nextjs.org/) (App Router, TypeScript)
+- **Framework**: [Next.js 14/15](https://nextjs.org/) (App Router, TypeScript)
 - **Backend / Database**: [Supabase](https://supabase.com/) (PostgreSQL, Auth, Realtime)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Theming**: [Next-Themes](https://github.com/pacocoursey/next-themes) (Dark/Light mode persistence)
+- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
 - **Animations**: [Framer Motion](https://www.framer.com/motion/)
 - **Icons**: [Lucide React](https://lucide.dev/)
 
@@ -15,10 +16,11 @@ A sophisticated, real-time bookmark manager built with **Next.js 14** and **Supa
 ## ✨ Features
 
 - **Google OAuth Login**: Seamless and secure authentication.
-- **Real-time Sync**: Uses Supabase Postgres Changes to update the UI instantly across all open tabs.
+- **Dynamic Theming**: Premium **Dark** and **Light** modes. Defaults to system preference with manual toggle.
+- **Enhanced Real-time Sync**: Full cross-tab synchronization. Add or delete a bookmark in one tab, and it instantly updates across all others.
 - **Private Data**: Row Level Security (RLS) ensures that every user's bookmarks are completely private.
 - **Search & Filter**: Find your saved links instantly with high-performance client-side filtering.
-- **Premium Aesthetics**: A custom-built dark theme with glassmorphic elements and buttery-smooth transitions.
+- **Premium Aesthetics**: Glassmorphic elements, softened light-mode palette, and buttery-smooth animations.
 
 ---
 
@@ -45,7 +47,7 @@ CREATE POLICY "Users can view their own bookmarks" ON bookmarks FOR SELECT USING
 CREATE POLICY "Users can insert their own bookmarks" ON bookmarks FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can delete their own bookmarks" ON bookmarks FOR DELETE USING (auth.uid() = user_id);
 
--- Enable Realtime for the bookmarks table
+-- CRITICAL: Enable Realtime for the bookmarks table
 ALTER PUBLICATION supabase_realtime ADD TABLE bookmarks;
 ```
 
@@ -70,21 +72,21 @@ npm run dev
 
 ## 🧠 Problems Encountered & Solutions
 
-### 1. Directory Naming Restrictions
-- **Problem**: The initial project initialization failed because the parent directory contained spaces and capital letters (`Smart Boomark App`), which is incompatible with `create-next-app` naming standards.
-- **Solution**: Created a dedicated, URL-friendly subdirectory named `smart-bookmark-app` for the source code and initialized the project there.
+### 1. Cross-Tab Deletion Sync
+- **Problem**: While insertions were syncing, deletions were often ignored or required a full page refresh in other tabs.
+- **Solution**: Refactored the Realtime listener to handle `DELETE` events explicitly by tracking the `old.id` payload. This allows the application to remove the specific element from the state instantly across all instances.
 
-### 2. Deprecated Auth Helpers
-- **Problem**: The `@supabase/auth-helpers-nextjs` package showed inconsistent behavior and missing exports (specifically `createRouteHandlerClient`) in the context of Next.js 14/15 modern App Router features.
-- **Solution**: Migrated the entire authentication and session management layer to the newer `@supabase/ssr` package. This required refactoring the Middleware, Browser Client, and Auth Callback Route, resulting in a much more stable and future-proof implementation.
+### 2. Supabase Client Re-initialization
+- **Problem**: The Realtime subscription would frequently drop or "flicker" during user interactions (like typing in the search bar).
+- **Solution**: Identified that the Supabase client was being recreated on every component render. I implemented `useMemo` to stabilize the client instance, ensuring a persistent WebSocket connection for Realtime updates.
 
-### 3. Real-time Latency vs. User Experience
-- **Problem**: While Supabase Realtime worked, there was a slight "perceived delay" between clicking "Add" and the bookmark appearing in the list on the same tab.
-- **Solution**: Implemented a hybrid approach. While relying on Realtime for multi-device sync, I added a manual `fetchBookmarks()` call immediately after a successful insertion. This ensures the UI feels "snappy" and instant for the active user while still maintaining perfect sync across other secondary tabs.
+### 3. Tailwind v4 Dark Mode Selector
+- **Problem**: Tailwind v4 changed how it detects the `.dark` class compared to previous versions, causing the "manual" theme toggle to fail even when the class was present.
+- **Solution**: Implemented a custom `@theme` block and a `@custom-variant dark` in `globals.css` to explicitly link Tailwind's dark utility classes to the `.dark` class applied by `next-themes`.
 
-### 4. Schema Cache Inconsistency
-- **Problem**: During development, an error occurred stating `"Could not find the table 'public.bookmarks' in the schema cache"`.
-- **Solution**: This usually happens when the PostgREST cache is stale after table creation. I addressed this by ensuring the SQL schema was correctly applied and advising a project refresh/environment variable verification, which force-refreshed the schema cache.
+### 4. Light Theme Eye Strain
+- **Problem**: The initial light theme was a pure `#ffffff` which felt too bright and "unfinished".
+- **Solution**: Shifted to a premium off-white palette (`#f9fafb`) and used solid white cards with subtle shadows to create depth and a better visual hierarchy.
 
 ---
 
