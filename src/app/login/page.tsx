@@ -2,11 +2,12 @@
 
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { LogIn } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 export default function LoginPage() {
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
     const router = useRouter();
     const [loading, setLoading] = useState(false);
 
@@ -35,28 +36,34 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] text-white">
+        <div className="min-h-screen flex items-center justify-center bg-background text-foreground transition-colors duration-300">
+            <div className="absolute top-4 right-4 z-20">
+                <ThemeToggle />
+            </div>
+
+
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px]" />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[120px]" />
             </div>
 
-            <div className="relative z-10 p-8 w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
+            <div className="relative z-10 p-8 w-full max-w-md bg-white dark:bg-white/5 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl">
+
                 <div className="text-center mb-10">
                     <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500/20 rounded-2xl mb-6">
-                        <LogIn className="w-8 h-8 text-blue-400" />
+                        <LogIn className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                     </div>
                     <h1 className="text-3xl font-bold tracking-tight mb-2">Smart Bookmark</h1>
-                    <p className="text-neutral-400">Manage your bookmarks in real-time</p>
+                    <p className="text-neutral-600 dark:text-neutral-400">Manage your bookmarks in real-time</p>
                 </div>
 
                 <button
                     onClick={handleGoogleLogin}
                     disabled={loading}
-                    className="w-full py-4 px-6 flex items-center justify-center gap-3 bg-white text-black hover:bg-neutral-200 transition-all font-semibold rounded-xl disabled:opacity-50"
+                    className="w-full py-4 px-6 flex items-center justify-center gap-3 bg-black dark:bg-white text-white dark:text-black hover:opacity-80 transition-all font-semibold rounded-xl disabled:opacity-50"
                 >
                     {loading ? (
-                        <div className="w-6 h-6 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                        <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     ) : (
                         <>
                             <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -89,3 +96,4 @@ export default function LoginPage() {
         </div>
     );
 }
+

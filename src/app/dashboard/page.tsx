@@ -2,9 +2,10 @@
 
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Bookmark, LogOut, Plus, Trash2, ExternalLink, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 interface BookmarkType {
     id: string;
@@ -14,7 +15,7 @@ interface BookmarkType {
 }
 
 export default function DashboardPage() {
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
@@ -23,6 +24,18 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+
+    const fetchBookmarks = useCallback(async () => {
+        const { data, error } = await supabase
+            .from('bookmarks')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (!error && data) {
+            setBookmarks(data);
+        }
+        setLoading(false);
+    }, [supabase]);
 
     useEffect(() => {
         const getUser = async () => {
@@ -36,10 +49,14 @@ export default function DashboardPage() {
         };
 
         getUser();
+    }, [supabase, router, fetchBookmarks]);
 
-        // Realtime subscription
+    useEffect(() => {
+        if (!user) return;
+
+        // Realtime subscription scoped to user
         const channel = supabase
-            .channel('bookmarks_changes')
+            .channel(`bookmarks_user_${user.id}`)
             .on(
                 'postgres_changes',
                 {
@@ -49,30 +66,37 @@ export default function DashboardPage() {
                 },
                 (payload) => {
                     console.log('Realtime change received:', payload);
-                    fetchBookmarks();
+                    if (payload.eventType === 'INSERT') {
+                        setBookmarks(prev => {
+                            if (prev.find(b => b.id === payload.new.id)) return prev;
+                            return [payload.new as BookmarkType, ...prev];
+                        });
+                    } else if (payload.eventType === 'DELETE') {
+                        const deletedId = payload.old?.id;
+                        if (deletedId) {
+                            setBookmarks(prev => prev.filter(b => b.id !== deletedId));
+                        } else {
+                            fetchBookmarks();
+                        }
+                    } else {
+
+                        fetchBookmarks();
+                    }
                 }
             )
             .subscribe((status) => {
-                console.log('Realtime subscription status:', status);
+                console.log('Realtime status:', status);
+                if (status === 'SUBSCRIBED') {
+                    // Refresh just in case we missed something during handshake
+                    fetchBookmarks();
+                }
             });
 
         return () => {
             supabase.removeChannel(channel);
         };
+    }, [supabase, user, fetchBookmarks]);
 
-    }, [supabase, router]);
-
-    const fetchBookmarks = async () => {
-        const { data, error } = await supabase
-            .from('bookmarks')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (!error && data) {
-            setBookmarks(data);
-        }
-        setLoading(false);
-    };
 
     const handleAddBookmark = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -101,7 +125,13 @@ export default function DashboardPage() {
 
 
     const handleDeleteBookmark = async (id: string) => {
-        await supabase.from('bookmarks').delete().eq('id', id);
+        // Optimistic update
+        setBookmarks(prev => prev.filter(b => b.id !== id));
+        const { error } = await supabase.from('bookmarks').delete().eq('id', id);
+        if (error) {
+            console.error('Error deleting:', error);
+            fetchBookmarks(); // Revert on error
+        }
     };
 
     const handleSignOut = async () => {
@@ -109,22 +139,24 @@ export default function DashboardPage() {
         router.push('/login');
     };
 
-    const filteredBookmarks = bookmarks.filter(b =>
+    const filteredBookmarks = bookmarks.filter((b: BookmarkType) =>
         b.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.url.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+
     if (loading) {
         return (
-            <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+            <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-8">
+        <div className="min-h-screen bg-background text-foreground p-4 md:p-8 transition-colors duration-300">
             {/* Background Orbs */}
+
             <div className="fixed inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-[20%] left-[10%] w-[50%] h-[50%] bg-blue-500/5 rounded-full blur-[150px]" />
                 <div className="absolute bottom-[20%] right-[10%] w-[50%] h-[50%] bg-purple-500/5 rounded-full blur-[150px]" />
@@ -135,24 +167,27 @@ export default function DashboardPage() {
                 <header className="flex items-center justify-between mb-12">
                     <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                            <Bookmark className="w-6 h-6 text-blue-400" />
+                            <Bookmark className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                         </div>
                         <div>
                             <h1 className="text-2xl font-bold">Smart Bookmark</h1>
                             <p className="text-neutral-500 text-sm">{user?.email}</p>
                         </div>
                     </div>
-                    <button
-                        onClick={handleSignOut}
-                        className="p-3 hover:bg-white/5 rounded-xl transition-colors text-neutral-400 hover:text-white"
-                        title="Sign Out"
-                    >
-                        <LogOut className="w-6 h-6" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <ThemeToggle />
+                        <button
+                            onClick={handleSignOut}
+                            className="p-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors text-neutral-500 hover:text-black dark:hover:text-white"
+                            title="Sign Out"
+                        >
+                            <LogOut className="w-6 h-6" />
+                        </button>
+                    </div>
                 </header>
 
                 {/* Add Form */}
-                <section className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-12">
+                <section className="bg-white dark:bg-white/5 backdrop-blur-xl border border-black/5 dark:border-white/10 rounded-2xl p-6 mb-12 shadow-sm">
                     <form onSubmit={handleAddBookmark} className="grid grid-cols-1 md:grid-cols-12 gap-4">
                         <div className="md:col-span-5">
                             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2 ml-1">Title</label>
@@ -161,7 +196,7 @@ export default function DashboardPage() {
                                 placeholder="Work Projects"
                                 value={newTitle}
                                 onChange={(e) => setNewTitle(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                                className="w-full bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-black dark:text-white"
                                 required
                             />
                         </div>
@@ -172,7 +207,7 @@ export default function DashboardPage() {
                                 placeholder="github.com/example"
                                 value={newUrl}
                                 onChange={(e) => setNewUrl(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                                className="w-full bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-black dark:text-white"
                                 required
                             />
                         </div>
@@ -180,7 +215,7 @@ export default function DashboardPage() {
                             <button
                                 type="submit"
                                 disabled={adding}
-                                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-6 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                                className="w-full bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white py-3 px-6 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
                             >
                                 {adding ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Plus className="w-5 h-5" />}
                                 Add
@@ -198,40 +233,41 @@ export default function DashboardPage() {
                             placeholder="Search bookmarks..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                            className="w-full bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-black dark:text-white shadow-sm"
                         />
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
-                        {filteredBookmarks.map((bookmark) => (
+                        {filteredBookmarks.map((bookmark: BookmarkType) => (
                             <motion.div
+
                                 key={bookmark.id}
                                 layout
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.9 }}
-                                className="group relative bg-white/5 hover:bg-white/[0.08] backdrop-blur-md border border-white/10 rounded-2xl p-6 transition-all"
+                                className="group relative bg-white dark:bg-white/5 hover:bg-neutral-50 dark:hover:bg-white/[0.08] backdrop-blur-md border border-black/5 dark:border-white/10 rounded-2xl p-6 transition-all shadow-sm hover:shadow-md"
                             >
                                 <div className="flex justify-between items-start mb-4">
-                                    <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400">
+                                    <div className="p-3 bg-blue-500/10 rounded-xl text-blue-600 dark:text-blue-400">
                                         <Bookmark className="w-5 h-5" />
                                     </div>
                                     <button
                                         onClick={() => handleDeleteBookmark(bookmark.id)}
-                                        className="p-2 text-neutral-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                                        className="p-2 text-neutral-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                                     >
                                         <Trash2 className="w-5 h-5" />
                                     </button>
                                 </div>
-                                <h3 className="font-bold text-lg mb-1 truncate">{bookmark.title}</h3>
+                                <h3 className="font-bold text-lg mb-1 truncate text-black dark:text-white">{bookmark.title}</h3>
                                 <p className="text-neutral-500 text-sm truncate mb-6">{bookmark.url}</p>
                                 <a
                                     href={bookmark.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 text-blue-400 text-sm font-semibold hover:underline"
+                                    className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-semibold hover:underline"
                                 >
                                     Visit Link
                                     <ExternalLink className="w-4 h-4" />
@@ -242,7 +278,7 @@ export default function DashboardPage() {
                 </div>
 
                 {filteredBookmarks.length === 0 && !loading && (
-                    <div className="text-center py-20 bg-white/5 border border-dashed border-white/10 rounded-3xl mt-12">
+                    <div className="text-center py-20 bg-neutral-50 dark:bg-white/5 border border-dashed border-black/10 dark:border-white/10 rounded-3xl mt-12">
                         <p className="text-neutral-500">No bookmarks found. Start by adding one above!</p>
                     </div>
                 )}
